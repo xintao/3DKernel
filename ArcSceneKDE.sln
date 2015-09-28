@@ -1,0 +1,270 @@
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using ESRI.ArcGIS.ADF.BaseClasses;
+using ESRI.ArcGIS.ADF.CATIDs;
+using ESRI.ArcGIS.Controls;
+using ESRI.ArcGIS.Framework;
+using ESRI.ArcGIS.ArcScene;
+using ESRI.ArcGIS.Analyst3D;
+using ESRI.ArcGIS.Carto;
+using ESRI.ArcGIS.esriSystem;
+using System.Windows.Forms;
+using System.IO;
+using NGif;
+using System.Collections.Generic;
+using System.Drawing.Imaging;
+
+namespace ArcSceneKDE
+{
+    /// <summary>
+    /// Command that works in ArcScene or SceneControl
+    /// </summary>
+    [Guid("ec1c7e36-5085-4f43-b591-74a68c8180f7")]
+    [ClassInterface(ClassInterfaceType.None)]
+    [ProgId("ArcSceneKDE.cmdExport")]
+    public sealed class cmdExport : BaseCommand
+    {
+        #region COM Registration Function(s)
+        [ComRegisterFunction()]
+        [ComVisible(false)]
+        static void RegisterFunction(Type registerType)
+        {
+            // Required for ArcGIS Component Category Registrar support
+            ArcGISCategoryRegistration(registerType);
+
+            //
+            // TODO: Add any COM registration code here
+            //
+        }
+
+        [ComUnregisterFunction()]
+        [ComVisible(false)]
+        static void UnregisterFunction(Type registerType)
+        {
+            // Required for ArcGIS Component Category Registrar support
+            ArcGISCategoryUnregistration(registerType);
+
+            //
+            // TODO: Add any COM unregistration code here
+            //
+        }
+
+        #region ArcGIS Component Category Registrar generated code
+        /// <summary>
+        /// Required method for ArcGIS Component Category registration -
+        /// Do not modify the contents of this method with the code editor.
+        /// </summary>
+        private static void ArcGISCategoryRegistration(Type registerType)
+        {
+            string regKey = string.Format("HKEY_CLASSES_ROOT\\CLSID\\{{{0}}}", registerType.GUID);
+            SxCommands.Register(regKey);
+            ControlsCommands.Register(regKey);
+        }
+        /// <summary>
+        /// Required method for ArcGIS Component Category unregistration -
+        /// Do not modify the contents of this method with the code editor.
+        /// </summary>
+        private static void ArcGISCategoryUnregistration(Type registerType)
+        {
+            string regKey = string.Format("HKEY_CLASSES_ROOT\\CLSID\\{{{0}}}", registerType.GUID);
+            SxCommands.Unregister(regKey);
+            ControlsCommands.Unregister(regKey);
+        }
+
+        #endregion
+        #endregion
+
+        private IApplication m_application;
+        private ISxDocument m_sxDoc;
+        private ISceneHookHelper m_sceneHookHelper = null;
+
+        public cmdExport()
+        {
+            //
+            // TODO: Define values for the public properties
+            //
+            base.m_category = "KDE3D"; //localizable text
+            base.m_caption = "Export";  //localizable text 
+            base.m_message = "Export 3D KDE to 2D images.";  //localizable text
+            base.m_toolTip = "Export 3D KDE to 2D images.";  //localizable text
+            base.m_name = "3D_Export";   //unique id, non-localizable (e.g. "MyCategory_MyCommand")
+
+            try
+            {
+                //
+                // TODO: change bitmap name if necessary
+                //
+                //string bitmapResourceName = GetType().Name + ".bmp";
+                //base.m_bitmap = new Bitmap(GetType(), bitmapResourceName);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine(ex.Message, "Invalid Bitmap");
+            }
+        }
+
+        #region Overridden Class Methods
+
+        /// <summary>
+        /// Occurs when this command is created
+        /// </summary>
+        /// <param name="hook">Instance of the application</param>
+        public override void OnCreate(object hook)
+        {
+            if (hook == null)
+                return;
+
+            m_application = hook as IApplication;
+            try
+            {
+                m_sceneHookHelper = new SceneHookHelperClass();
+                m_sceneHookHelper.Hook = hook;
+                if (m_sceneHookHelper.ActiveViewer == null)
+                {
+                    m_sceneHookHelper = null;
+                }
+            }
+            catch
+            {
+                m_sceneHookHelper = null;
+            }
+
+            if (m_sceneHookHelper == null)
+                base.m_enabled = false;
+            else
+                base.m_enabled = true;
+
+            // TODO:  Add other initialization code
+
+        }
+
+        /// <summary>
+        /// Occurs when this command is clicked
+        /// </summary>
+        public override void OnClick()
+        {
+            // TODO: Add cmdExport.OnClick implementation
+            //IActiveView activeView = (m_sxDoc as IBasicDocument).ActiveView;
+            //IActiveView activeView = m_sxDoc.Scene as IActiveView;
+            FolderBrowserDialog fbd = new FolderBrowserDialog();
+            DialogResult result = fbd.ShowDialog();
+            if (result != DialogResult.OK)
+                return;
+
+            string path = fbd.SelectedPath;
+            List<string> imageFiles = new List<string>();
+
+            m_sxDoc = (ISxDocument)m_application.Document;
+            ISceneViewer pSceneViewer = (ISceneViewer)m_sceneHookHelper.ActiveViewer;
+
+            int pLCount = m_sxDoc.Scene.LayerCount;
+            //for (int i = 0; i < pLCount; i++)
+            //{
+            //    ILayer pL = m_sxDoc.Scene.get_Layer(i);
+            //    pL.Visible = false;
+            //}
+            m_sxDoc.Scene.SceneGraph.RefreshViewers();
+            m_sxDoc.UpdateContents();
+
+            for (int i = 0; i < pLCount; i++)
+            {
+                ILayer pL = m_sxDoc.Scene.get_Layer(i);
+                if (!pL.Name.EndsWith("_DirtVal"))
+                    continue;
+
+                pL.Visible = true;
+                m_sxDoc.Scene.SceneGraph.RefreshViewers();
+                string pFileFullName = path + "\\" + pL.Name + ".jpg";
+                pSceneViewer.GetScreenShot(esri3DOutputImageType.JPEG, pFileFullName);
+
+                Image image1 = Image.FromFile(pFileFullName);                              
+                string pPNGFileFullName = path + "\\" + pL.Name + ".png";
+                image1.Save(pPNGFileFullName, ImageFormat.Png);
+                image1.Dispose();
+
+                File.Delete(pFileFullName);
+                imageFiles.Add(pPNGFileFullName);
+                pL.Visible = false;
+            }
+            m_sxDoc.UpdateContents();
+
+
+            string outputGIFFile = path + "\\test.gif";
+            if (!File.Exists(outputGIFFile))
+            {
+                System.IO.FileStream fs = System.IO.File.Create(outputGIFFile);
+                fs.Close();
+            }
+
+            createGIF(imageFiles, outputGIFFile);
+            //CreateJPEGHiResolutionFromActiveView(m_sxDoc.Scene, "c:\\test.jpg");
+        }
+
+        //http://colocrossing.dl.sourceforge.net/project/ngif/0.1%20source/source/NGif.rar
+        private void createGIF(List<string> imageFiles, string outputGIFFile)
+        {
+            AnimatedGifEncoder e = new AnimatedGifEncoder();
+            e.Start(outputGIFFile);
+            e.SetDelay(500);
+            //-1:no repeat,0:always repeat
+            e.SetRepeat(0);
+            for (int i = 0, count = imageFiles.Count; i < count; i++)
+            {
+                e.AddFrame(Image.FromFile(imageFiles[i]));
+            }
+            e.Finish();
+            
+        }
+
+
+
+        ///<summary>Creates a .jpg (JPEG) file from the ActiveView using a high resolution exporting option. Default values of 96 DPI are overwritten to 300 used for the image creation.</summary>
+        ///
+        ///<param name="pScene">An IActiveView interface</param>
+        ///<param name="pathFileName">A System.String that the path and filename of the JPEG you want to create. Example: "C:\temp\hiResolutionTest.jpg"</param>
+        /// 
+        ///<returns>A System.Boolean indicating the success</returns>
+        /// 
+        ///<remarks></remarks>
+        public System.Boolean CreateJPEGHiResolutionFromActiveView(IScene pScene, System.String pathFileName)
+        {
+            //parameter check
+            if (pScene == null || !(pathFileName.EndsWith(".jpg")))
+            {
+                return false;
+            }
+            ESRI.ArcGIS.Output.IExport export = new ESRI.ArcGIS.Output.ExportJPEGClass();
+            export.ExportFileName = pathFileName;
+
+            // Because we are exporting to a resolution that differs from screen 
+            // resolution, we should assign the two values to variables for use 
+            // in our sizing calculations
+            System.Int32 screenResolution = 96;
+            System.Int32 outputResolution = 300;
+
+            export.Resolution = outputResolution;
+            tagRECT exportRECT; // This is a structure
+            exportRECT.left = 0;
+            exportRECT.top = 0;
+            //exportRECT.right = (pScene.Extent as IEnvelope).r..right * (outputResolution / screenResolution);
+            //exportRECT.bottom = pScene.ExportFrame.bottom * (outputResolution / screenResolution);
+
+            // Set up the PixelBounds envelope to match the exportRECT
+            ESRI.ArcGIS.Geometry.IEnvelope envelope = new ESRI.ArcGIS.Geometry.EnvelopeClass();
+            //envelope.PutCoords(exportRECT.left, exportRECT.top, exportRECT.right, exportRECT.bottom);
+            export.PixelBounds = envelope;
+
+            System.Int32 hDC = export.StartExporting();
+
+            //pScene.Output(hDC, (System.Int16)export.Resolution, ref exportRECT, null, null); // Explicit Cast and 'ref' keyword needed 
+            export.FinishExporting();
+            export.Cleanup();
+
+            return true;
+        }
+        #endregion
+
+
+    }
+}
